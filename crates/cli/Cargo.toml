@@ -1,0 +1,16 @@
+[package]
+name = "dockerview-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "dockerview-cli"
+path = "src/main.rs"
+
+[dependencies]
+dockerview-core.workspace = true
+tokio.workspace = true
+futures-util.workspace = true
+anyhow.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true

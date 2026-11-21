@@ -1,0 +1,13 @@
+[package]
+name = "dockerview-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bollard.workspace = true
+tokio.workspace = true
+flume.workspace = true
+futures-util.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde_json.workspace = true
