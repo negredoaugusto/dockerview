@@ -1671,6 +1671,7 @@ name = "dockerview-egui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "dockerview-core",
  "eframe",
  "egui",
@@ -1685,6 +1686,7 @@ name = "dockerview-gpui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "dockerview-core",
  "flume",
  "gpui-kit",

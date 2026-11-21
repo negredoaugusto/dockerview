@@ -206,25 +206,31 @@ impl DockerViewApp {
         });
         ui.add_space(8.0);
 
-        let n = hist.samples().len() as f64;
+        // Eixo X em segundos Unix; os rótulos mostram a hora local (ex.: 12:31:05).
         let points = |f: fn(&dockerview_core::StatsSample) -> f64| -> PlotPoints<'static> {
-            hist.samples().iter().enumerate().map(|(i, s)| [i as f64 - n + 1.0, f(s)]).collect()
+            hist.timed().map(|(t, s)| [unix_secs(t), f(s)]).collect()
         };
-        let x_range = -(hist.capacity() as f64)..=0.0;
+        let now = unix_secs(std::time::SystemTime::now());
+        let x_range = (now - hist.capacity() as f64)..=now;
         let height = ((ui.available_height() - 40.0) / 2.0).max(120.0);
 
         ui.label(RichText::new("CPU (% do host)").strong());
         Plot::new("cpu_plot")
             .height(height)
             .include_x(*x_range.start())
-            .include_x(0.0)
+            .include_x(*x_range.end())
             .include_y(0.0)
             .include_y(1.0)
             .allow_drag(false)
             .allow_zoom(false)
             .allow_scroll(false)
-            .x_axis_formatter(|m, _| format!("{}s", m.value))
-            .y_axis_formatter(|m, _| format!("{:.0}%", m.value))
+            .x_grid_spacer(egui_plot::uniform_grid_spacer(|_| [5.0, 10.0, 30.0]))
+            .x_axis_formatter(|m, _| clock(m.value))
+            .y_axis_formatter(|m, _| {
+                // Casas decimais conforme o passo da grade: evita "1% 1% 1%" com CPU baixa.
+                let decimals = if m.step_size >= 1.0 { 0 } else if m.step_size >= 0.1 { 1 } else { 2 };
+                format!("{:.*}%", decimals, m.value)
+            })
             .show(ui, |p| {
                 p.line(Line::new("CPU", points(|s| s.cpu_host_percent())).color(Color32::from_rgb(90, 160, 230)).fill(0.0));
             });
@@ -233,13 +239,14 @@ impl DockerViewApp {
         Plot::new("mem_plot")
             .height(height)
             .include_x(*x_range.start())
-            .include_x(0.0)
+            .include_x(*x_range.end())
             .include_y(0.0)
             .allow_drag(false)
             .allow_zoom(false)
             .allow_scroll(false)
             .legend(Legend::default())
-            .x_axis_formatter(|m, _| format!("{}s", m.value))
+            .x_grid_spacer(egui_plot::uniform_grid_spacer(|_| [5.0, 10.0, 30.0]))
+            .x_axis_formatter(|m, _| clock(m.value))
             .show(ui, |p| {
                 p.line(
                     Line::new("Uso", points(|s| s.mem_usage as f64 / 1_048_576.0))
@@ -279,6 +286,17 @@ impl DockerViewApp {
             }
         }
     }
+}
+
+fn unix_secs(t: std::time::SystemTime) -> f64 {
+    t.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
+}
+
+/// Segundos Unix → hora local "HH:MM:SS".
+fn clock(unix: f64) -> String {
+    chrono::DateTime::from_timestamp(unix as i64, 0)
+        .map(|t| t.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
+        .unwrap_or_default()
 }
 
 fn metric(ui: &mut egui::Ui, label: &str, value: String) {

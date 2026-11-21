@@ -2,7 +2,7 @@
 //! [`Event`]s do serviço aqui e apenas renderizam o resultado.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use crate::model::{Action, ContainerId, ContainerState, ContainerSummary, LogLine, StatsSample};
 use crate::service::Event;
@@ -78,23 +78,35 @@ impl LogBuffer {
     }
 }
 
-/// Histórico de amostras de estatísticas para gráficos.
+/// Histórico de amostras de estatísticas para gráficos, com o horário de cada uma.
 #[derive(Debug, Clone)]
 pub struct StatsHistory {
     samples: VecDeque<StatsSample>,
+    times: VecDeque<SystemTime>,
     capacity: usize,
 }
 
 impl StatsHistory {
     pub fn new(capacity: usize) -> Self {
-        Self { samples: VecDeque::with_capacity(capacity), capacity }
+        Self { samples: VecDeque::with_capacity(capacity), times: VecDeque::with_capacity(capacity), capacity }
     }
 
     pub fn push(&mut self, s: StatsSample) {
+        self.push_at(SystemTime::now(), s);
+    }
+
+    pub fn push_at(&mut self, at: SystemTime, s: StatsSample) {
         if self.samples.len() == self.capacity {
             self.samples.pop_front();
+            self.times.pop_front();
         }
         self.samples.push_back(s);
+        self.times.push_back(at);
+    }
+
+    /// Amostras com o horário em que chegaram, da mais antiga para a mais recente.
+    pub fn timed(&self) -> impl Iterator<Item = (SystemTime, &StatsSample)> {
+        self.times.iter().copied().zip(self.samples.iter())
     }
 
     pub fn latest(&self) -> Option<&StatsSample> {
@@ -308,6 +320,17 @@ mod tests {
         let texts: Vec<_> = b.lines().iter().map(|l| l.text.as_str()).collect();
         assert_eq!(texts, ["b", "c"]);
         assert_eq!(b.dropped, 1);
+    }
+
+    #[test]
+    fn stats_history_keeps_times_in_sync() {
+        let mut h = StatsHistory::new(2);
+        let t0 = SystemTime::UNIX_EPOCH;
+        for i in 0..3u64 {
+            h.push_at(t0 + std::time::Duration::from_secs(i), StatsSample { pids: i, ..Default::default() });
+        }
+        let v: Vec<_> = h.timed().map(|(t, s)| (t.duration_since(t0).unwrap().as_secs(), s.pids)).collect();
+        assert_eq!(v, [(1, 1), (2, 2)]);
     }
 
     #[test]

@@ -1,5 +1,7 @@
 //! Painel lateral de detalhes: visão geral (métricas + gráficos), logs e inspect.
 
+use std::time::SystemTime;
+
 use dockerview_core::{Action, ContainerState, ContainerSummary, LogLine, LogStream, StatsSample, format_bytes};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
@@ -184,7 +186,7 @@ impl DockerApp {
         let mut body = v_flex().id("overview").size_full().overflow_y_scroll().p_4().gap_4();
 
         if let (Some(h), Some(s)) = (history, latest) {
-            let samples: Vec<StatsSample> = h.samples().iter().copied().collect();
+            let samples: Vec<(SystemTime, StatsSample)> = h.timed().map(|(t, s)| (t, *s)).collect();
             body = body
                 .child(
                     h_flex()
@@ -517,13 +519,16 @@ fn json_line(line: &str, p: &Palette) -> impl IntoElement {
     row
 }
 
-fn series(samples: &[StatsSample], f: fn(&StatsSample) -> f64) -> Vec<ChartPoint> {
-    let n = samples.len();
+/// Pontos do gráfico com a hora local de cada amostra no eixo X (ex.: 12:31:05).
+fn series(samples: &[(SystemTime, StatsSample)], f: fn(&StatsSample) -> f64) -> Vec<ChartPoint> {
     samples
         .iter()
-        .enumerate()
-        .map(|(i, s)| ChartPoint { label: format!("-{}s", n - 1 - i).into(), value: f(s) })
+        .map(|(t, s)| ChartPoint { label: clock(*t).into(), value: f(s) })
         .collect()
+}
+
+fn clock(t: SystemTime) -> String {
+    chrono::DateTime::<chrono::Local>::from(t).format("%H:%M:%S").to_string()
 }
 
 fn chart_card(title: &'static str, value: String, data: Vec<ChartPoint>, color: Hsla, p: &Palette) -> impl IntoElement {
