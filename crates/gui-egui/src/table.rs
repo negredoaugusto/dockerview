@@ -48,7 +48,7 @@ impl Col {
             Col::Cpu => 60.0,
             Col::Memory => 80.0,
             Col::Ports => 110.0,
-            Col::Actions => 110.0,
+            Col::Actions => 140.0,
         }
     }
 
@@ -64,7 +64,7 @@ impl Col {
             Col::Cpu => Column::initial(65.0).at_least(55.0),
             Col::Memory => Column::initial(90.0).at_least(70.0),
             Col::Ports => Column::initial(150.0).at_least(60.0).clip(true),
-            Col::Actions => Column::initial(120.0).at_least(100.0),
+            Col::Actions => Column::initial(140.0).at_least(140.0),
         }
     }
 }
@@ -220,26 +220,42 @@ fn cell(ui: &mut egui::Ui, col: Col, c: &ContainerSummary, stats: Option<StatsSa
 }
 
 fn action_buttons(ui: &mut egui::Ui, c: &ContainerSummary) -> Option<RowAction> {
-    let mut out = None;
-    let mut btn = |ui: &mut egui::Ui, icon: &str, tip: &str, a: Action| {
-        if ui.small_button(icon).on_hover_text(tip).clicked() {
-            out = Some(RowAction::Perform(c.id.clone(), a));
-        }
+    // Slots fixos (iniciar/parar · pausar/retomar · reiniciar · remover): cada ícone
+    // fica sempre na mesma coluna, independente do estado do container.
+    type Slot = Option<(&'static str, &'static str, Option<Action>)>;
+    let slots: [Slot; 4] = match c.state {
+        ContainerState::Running | ContainerState::Restarting => [
+            Some(("⏹", "Parar", Some(Action::Stop))),
+            Some(("⏸", "Pausar", Some(Action::Pause))),
+            Some(("⟳", "Reiniciar", Some(Action::Restart))),
+            Some(("🗑", "Remover", None)),
+        ],
+        ContainerState::Paused => [
+            Some(("⏹", "Parar", Some(Action::Stop))),
+            Some(("⏵", "Retomar", Some(Action::Unpause))),
+            None,
+            Some(("🗑", "Remover", None)),
+        ],
+        _ => [Some(("⏵", "Iniciar", Some(Action::Start))), None, None, Some(("🗑", "Remover", None))],
     };
-    match c.state {
-        ContainerState::Running | ContainerState::Restarting => {
-            btn(ui, "⏹", "Parar", Action::Stop);
-            btn(ui, "⏸", "Pausar", Action::Pause);
-            btn(ui, "⟳", "Reiniciar", Action::Restart);
+
+    let mut out = None;
+    let slot_size = egui::vec2(24.0, 20.0);
+    for slot in slots {
+        match slot {
+            None => {
+                // Botão invisível do mesmo tamanho: ocupa exatamente o espaço de um real.
+                ui.add_visible(false, |ui: &mut egui::Ui| ui.add_sized(slot_size, egui::Button::new("⏸").small()));
+            }
+            Some((icon, tip, action)) => {
+                if ui.add_sized(slot_size, egui::Button::new(icon).small()).on_hover_text(tip).clicked() {
+                    out = Some(match action {
+                        Some(a) => RowAction::Perform(c.id.clone(), a),
+                        None => RowAction::Remove(c.id.clone()),
+                    });
+                }
+            }
         }
-        ContainerState::Paused => {
-            btn(ui, "⏵", "Retomar", Action::Unpause);
-            btn(ui, "⏹", "Parar", Action::Stop);
-        }
-        _ => btn(ui, "⏵", "Iniciar", Action::Start),
-    }
-    if ui.small_button("🗑").on_hover_text("Remover").clicked() {
-        out = Some(RowAction::Remove(c.id.clone()));
     }
     out
 }

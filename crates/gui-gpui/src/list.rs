@@ -11,6 +11,10 @@ use crate::app::DockerApp;
 use crate::theme::{MONO_FONT, Palette};
 use crate::widgets::{chip, empty_state, meter, state_dot, state_pill};
 
+/// Cada ação ocupa uma caixa de largura fixa, independente do tamanho real do botão.
+const SLOT: Pixels = px(28.);
+const ACTIONS_WIDTH: Pixels = px(4. * 28.);
+
 /// Colunas opcionais, mostradas conforme a largura disponível.
 struct Layout {
     actions: bool,
@@ -80,18 +84,21 @@ impl DockerApp {
             .child(
                 v_flex()
                     .flex_1()
-                    .min_w(px(140.))
+                    .min_w_0()
+                    .overflow_hidden()
                     .gap_0p5()
                     .child(div().text_sm().font_weight(FontWeight::MEDIUM).text_color(p.text).truncate().child(c.name.clone()))
                     .child(
                         h_flex()
+                            .min_w_0()
                             .gap_1p5()
                             .text_xs()
                             .text_color(p.text_faint)
-                            .child(div().font_family(MONO_FONT).truncate().child(c.image.clone()))
+                            .child(div().min_w_0().font_family(MONO_FONT).truncate().child(c.image.clone()))
                             .when_some(c.compose_project.clone(), |d, proj| {
                                 d.child(
                                     div()
+                                        .flex_shrink_0()
                                         .px_1()
                                         .rounded_sm()
                                         .bg(p.pink.alpha(0.12))
@@ -106,6 +113,7 @@ impl DockerApp {
                     v_flex()
                         .w(px(150.))
                         .flex_shrink_0()
+                        .overflow_hidden()
                         .gap_1()
                         .child(div().flex().child(state_pill(c.state, p)))
                         .child(div().text_xs().text_color(p.text_faint).truncate().child(c.status.clone())),
@@ -131,8 +139,8 @@ impl DockerApp {
                     h_flex()
                         .w(px(150.))
                         .flex_shrink_0()
+                        .overflow_hidden()
                         .gap_1()
-                        .flex_wrap()
                         .children(published.into_iter().take(3).map(|t| chip(t, p))),
                 )
             })
@@ -162,25 +170,34 @@ fn metric_cell(label: &'static str, value: Option<String>, fraction: Option<f32>
 }
 
 fn row_actions(ix: usize, c: &ContainerSummary, cx: &mut Context<DockerApp>) -> impl IntoElement {
-    let mut buttons: Vec<(IconName, &'static str, Option<Action>)> = Vec::new();
-    match c.state {
-        ContainerState::Running | ContainerState::Restarting => {
-            buttons.push((IconName::Square, "Parar", Some(Action::Stop)));
-            buttons.push((IconName::Pause, "Pausar", Some(Action::Pause)));
-            buttons.push((IconName::RotateCw, "Reiniciar", Some(Action::Restart)));
-        }
-        ContainerState::Paused => {
-            buttons.push((IconName::Play, "Retomar", Some(Action::Unpause)));
-            buttons.push((IconName::Square, "Parar", Some(Action::Stop)));
-        }
-        _ => buttons.push((IconName::Play, "Iniciar", Some(Action::Start))),
-    }
-    buttons.push((IconName::Trash, "Remover", None));
+    // Slots fixos: cada posição tem sempre a mesma função, então os ícones ficam
+    // alinhados em coluna entre linhas, independente do estado do container.
+    //   1: iniciar/parar   2: pausar/retomar   3: reiniciar   4: remover
+    type Slot = Option<(IconName, &'static str, Option<Action>)>;
+    let slots: [Slot; 4] = match c.state {
+        ContainerState::Running | ContainerState::Restarting => [
+            Some((IconName::Square, "Parar", Some(Action::Stop))),
+            Some((IconName::Pause, "Pausar", Some(Action::Pause))),
+            Some((IconName::RotateCw, "Reiniciar", Some(Action::Restart))),
+            Some((IconName::Trash, "Remover", None)),
+        ],
+        ContainerState::Paused => [
+            Some((IconName::Square, "Parar", Some(Action::Stop))),
+            Some((IconName::Play, "Retomar", Some(Action::Unpause))),
+            None,
+            Some((IconName::Trash, "Remover", None)),
+        ],
+        _ => [Some((IconName::Play, "Iniciar", Some(Action::Start))), None, None, Some((IconName::Trash, "Remover", None))],
+    };
 
-    h_flex().gap_0p5().flex_shrink_0().children(buttons.into_iter().enumerate().map(|(bi, (icon_name, tip, action))| {
+    h_flex().w(ACTIONS_WIDTH).flex_shrink_0().children(slots.into_iter().enumerate().map(|(bi, slot)| {
+        let cell = div().w(SLOT).flex_shrink_0().flex().justify_center();
+        let Some((icon_name, tip, action)) = slot else {
+            return cell.into_any_element();
+        };
         let id = c.id.clone();
         let entity = cx.entity();
-        Button::new(("act", ix * 10 + bi))
+        let button = Button::new(("act", ix * 10 + bi))
             .ghost()
             .small()
             .icon(icon_name)
@@ -191,6 +208,7 @@ fn row_actions(ix: usize, c: &ContainerSummary, cx: &mut Context<DockerApp>) -> 
                     Some(a) => this.perform(&id, a),
                     None => this.confirm_remove(id.clone(), window, cx),
                 });
-            })
+            });
+        cell.child(button).into_any_element()
     }))
 }
