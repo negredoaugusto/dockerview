@@ -5,6 +5,7 @@ members = ["crates/core", "crates/cli", "crates/gui-egui", "crates/gui-gpui"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [workspace.dependencies]
 dockerview-core = { path = "crates/core" }
