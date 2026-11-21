@@ -8,9 +8,11 @@ pub mod client;
 pub mod error;
 pub mod model;
 pub mod service;
+pub mod state;
 pub mod stats;
 
 pub use client::{ContainerEvent, DockerClient};
 pub use error::{CoreError, Result};
 pub use model::*;
+pub use state::{AppState, Connection, Filter, LogBuffer, Notification, NotificationKind, StatsHistory};
 pub use service::{Command, CoreHandle, Event, Notifier, spawn_core};
