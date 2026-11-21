@@ -110,6 +110,17 @@ impl StatsHistory {
     }
 }
 
+/// Uso agregado dos containers em execução.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Totals {
+    /// Fração da CPU total do host (0–100%).
+    pub cpu_host_percent: f64,
+    pub cores_used: f64,
+    pub host_cores: u32,
+    pub mem_usage: u64,
+    pub mem_limit: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotificationKind {
     Info,
@@ -242,6 +253,24 @@ impl AppState {
         self.containers.iter().filter(|c| c.state.is_running()).map(|c| c.id.clone()).collect()
     }
 
+    /// Totais dos containers em execução: (CPU % do host, núcleos em uso, núcleos do host, memória).
+    pub fn totals(&self) -> Totals {
+        let mut t = Totals::default();
+        for s in self
+            .containers
+            .iter()
+            .filter(|c| c.state.is_running())
+            .filter_map(|c| self.stats.get(&c.id).and_then(|h| h.latest()))
+        {
+            t.cores_used += s.cores_used();
+            t.host_cores = t.host_cores.max(s.online_cpus);
+            t.mem_usage += s.mem_usage;
+            t.mem_limit = t.mem_limit.max(s.mem_limit);
+        }
+        t.cpu_host_percent = if t.host_cores > 0 { t.cores_used * 100.0 / f64::from(t.host_cores) } else { 0.0 };
+        t
+    }
+
     pub fn count(&self, filter: Filter) -> usize {
         self.containers.iter().filter(|c| filter.matches(c.state)).count()
     }
@@ -306,6 +335,26 @@ mod tests {
         assert_eq!(s.logs["a"].len(), 1);
         s.apply(Event::Containers(vec![]));
         assert!(s.logs.is_empty() && s.stats.is_empty());
+    }
+
+    #[test]
+    fn totals_normalize_cpu_by_host_cores() {
+        let mut s = AppState::default();
+        s.apply(Event::Containers(vec![
+            container("a", "worker", ContainerState::Running),
+            container("b", "web", ContainerState::Running),
+            container("c", "old", ContainerState::Exited),
+        ]));
+        let sample = |cpu, mem| StatsSample { cpu_percent: cpu, online_cpus: 16, mem_usage: mem, mem_limit: 1000, ..Default::default() };
+        s.apply(Event::Stats { id: "a".into(), sample: sample(118.0, 10) });
+        s.apply(Event::Stats { id: "b".into(), sample: sample(42.0, 5) });
+        // Stats de container parado não entram no total.
+        s.apply(Event::Stats { id: "c".into(), sample: sample(999.0, 999) });
+        let t = s.totals();
+        assert!((t.cores_used - 1.6).abs() < 1e-9);
+        assert_eq!(t.host_cores, 16);
+        assert!((t.cpu_host_percent - 10.0).abs() < 1e-9); // 160% / 16 núcleos
+        assert_eq!(t.mem_usage, 15);
     }
 
     #[test]

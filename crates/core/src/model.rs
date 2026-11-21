@@ -96,16 +96,31 @@ pub struct LogLine {
     pub text: String,
 }
 
-/// Uma amostra de estatísticas já calculada (igual ao `docker stats`).
+/// Uma amostra de estatísticas já calculada.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct StatsSample {
+    /// CPU no padrão do `docker stats`: 100% = um núcleo inteiro (pode passar de 100%).
     pub cpu_percent: f64,
+    /// Núcleos disponíveis para o container (normalmente os do host).
+    pub online_cpus: u32,
     pub mem_usage: u64,
     pub mem_limit: u64,
     pub mem_percent: f64,
     pub net_rx: u64,
     pub net_tx: u64,
     pub pids: u64,
+}
+
+impl StatsSample {
+    /// CPU como fração da capacidade total do host: 0–100%.
+    pub fn cpu_host_percent(&self) -> f64 {
+        self.cpu_percent / f64::from(self.online_cpus.max(1))
+    }
+
+    /// Núcleos em uso (ex.: 1.18 = pouco mais de um núcleo).
+    pub fn cores_used(&self) -> f64 {
+        self.cpu_percent / 100.0
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,6 +173,15 @@ mod tests {
         assert_eq!(format_bytes(512), "512 B");
         assert_eq!(format_bytes(1536), "1.5 KiB");
         assert_eq!(format_bytes(3 * 1024 * 1024 * 1024), "3.0 GiB");
+    }
+
+    #[test]
+    fn cpu_normalized_to_host() {
+        let s = StatsSample { cpu_percent: 118.0, online_cpus: 16, ..Default::default() };
+        assert!((s.cpu_host_percent() - 7.375).abs() < 1e-9);
+        assert!((s.cores_used() - 1.18).abs() < 1e-9);
+        // Sem informação de núcleos, assume 1 (não divide por zero).
+        assert_eq!(StatsSample { cpu_percent: 50.0, ..Default::default() }.cpu_host_percent(), 50.0);
     }
 
     #[test]

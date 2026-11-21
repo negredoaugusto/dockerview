@@ -120,7 +120,13 @@ impl DockerApp {
                 )
             })
             .when(layout.metrics, |d| {
-                d.child(metric_cell("CPU", stats.map(|s| format!("{:.1}%", s.cpu_percent)), stats.map(|s| (s.cpu_percent / 100.0) as f32), p.accent, p))
+                d.child(metric_cell(
+                    "CPU",
+                    stats.map(|s| format!("{:.1}%", s.cpu_host_percent())),
+                    stats.map(|s| (s.cpu_host_percent() / 100.0) as f32),
+                    p.accent,
+                    p,
+                ))
                     .child(metric_cell(
                         "RAM",
                         stats.map(|s| format_bytes(s.mem_usage)),

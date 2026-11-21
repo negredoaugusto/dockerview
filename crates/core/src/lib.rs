@@ -14,5 +14,5 @@ pub mod stats;
 pub use client::{ContainerEvent, DockerClient};
 pub use error::{CoreError, Result};
 pub use model::*;
-pub use state::{AppState, Connection, Filter, LogBuffer, Notification, NotificationKind, StatsHistory};
+pub use state::{AppState, Connection, Filter, LogBuffer, Notification, NotificationKind, StatsHistory, Totals};
 pub use service::{Command, CoreHandle, Event, Notifier, spawn_core};

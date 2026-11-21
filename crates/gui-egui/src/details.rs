@@ -195,7 +195,7 @@ impl DockerViewApp {
         let Some(s) = hist.latest().copied() else { return };
 
         egui::Grid::new("stats_grid").num_columns(4).spacing([24.0, 6.0]).show(ui, |ui| {
-            metric(ui, "CPU", format!("{:.2}%", s.cpu_percent));
+            metric(ui, "CPU do host", format!("{:.2}% ({:.2} de {} núcleos)", s.cpu_host_percent(), s.cores_used(), s.online_cpus));
             metric(ui, "Memória", format!("{} / {} ({:.1}%)", format_bytes(s.mem_usage), format_bytes(s.mem_limit), s.mem_percent));
             ui.end_row();
             metric(ui, "Rede RX", format_bytes(s.net_rx));
@@ -213,7 +213,7 @@ impl DockerViewApp {
         let x_range = -(hist.capacity() as f64)..=0.0;
         let height = ((ui.available_height() - 40.0) / 2.0).max(120.0);
 
-        ui.label(RichText::new("CPU %").strong());
+        ui.label(RichText::new("CPU (% do host)").strong());
         Plot::new("cpu_plot")
             .height(height)
             .include_x(*x_range.start())
@@ -226,7 +226,7 @@ impl DockerViewApp {
             .x_axis_formatter(|m, _| format!("{}s", m.value))
             .y_axis_formatter(|m, _| format!("{:.0}%", m.value))
             .show(ui, |p| {
-                p.line(Line::new("CPU", points(|s| s.cpu_percent)).color(Color32::from_rgb(90, 160, 230)).fill(0.0));
+                p.line(Line::new("CPU", points(|s| s.cpu_host_percent())).color(Color32::from_rgb(90, 160, 230)).fill(0.0));
             });
 
         ui.label(RichText::new("Memória (MiB)").strong());

@@ -189,14 +189,14 @@ impl DockerApp {
                 .child(
                     h_flex()
                         .gap_2()
-                        .child(mini_metric(IconName::Cpu, "CPU", format!("{:.1}%", s.cpu_percent), p.accent, p))
+                        .child(mini_metric(IconName::Cpu, "CPU do host", format!("{:.1}%", s.cpu_host_percent()), p.accent, p))
                         .child(mini_metric(IconName::MemoryStick, "Memória", format_bytes(s.mem_usage), p.cyan, p))
                         .child(mini_metric(IconName::Hash, "PIDs", s.pids.to_string(), p.pink, p)),
                 )
                 .child(chart_card(
-                    "Uso de CPU",
-                    format!("{:.2}%", s.cpu_percent),
-                    series(&samples, |s| s.cpu_percent),
+                    "CPU (% do host)",
+                    format!("{:.2}% · {:.2} de {} núcleos", s.cpu_host_percent(), s.cores_used(), s.online_cpus),
+                    series(&samples, |s| s.cpu_host_percent()),
                     p.accent,
                     p,
                 ))

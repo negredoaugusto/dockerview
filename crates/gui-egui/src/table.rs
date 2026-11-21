@@ -196,7 +196,8 @@ fn cell(ui: &mut egui::Ui, col: Col, c: &ContainerSummary, stats: Option<StatsSa
         }
         Col::Cpu => match stats {
             Some(s) => {
-                ui.monospace(format!("{:.1}%", s.cpu_percent));
+                ui.monospace(format!("{:.1}%", s.cpu_host_percent()))
+                    .on_hover_text(format!("{:.2} de {} núcleos", s.cores_used(), s.online_cpus));
             }
             None => dash(ui),
         },

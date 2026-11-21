@@ -383,7 +383,7 @@ impl DockerApp {
     }
 
     fn render_engine_card(&self, p: &Palette) -> impl IntoElement {
-        let (cpu, mem) = self.totals();
+        let t = self.state.totals();
         v_flex()
             .gap_2()
             .p_3()
@@ -409,20 +409,11 @@ impl DockerApp {
                     .justify_between()
                     .text_xs()
                     .text_color(p.text_muted)
-                    .child(format!("CPU {cpu:.1}%"))
-                    .child(format!("RAM {}", format_bytes(mem))),
+                    .child(format!("CPU {:.1}%", t.cpu_host_percent))
+                    .child(format!("RAM {}", format_bytes(t.mem_usage))),
             )
     }
 
-    /// Soma de CPU e memória dos containers em execução.
-    pub fn totals(&self) -> (f64, u64) {
-        self.state
-            .containers
-            .iter()
-            .filter(|c| c.state.is_running())
-            .filter_map(|c| self.state.stats.get(&c.id).and_then(|h| h.latest()))
-            .fold((0.0, 0), |(cpu, mem), s| (cpu + s.cpu_percent, mem + s.mem_usage))
-    }
 
     fn render_header(&self, p: &Palette, cx: &mut Context<Self>) -> impl IntoElement {
         let (title, subtitle) = match self.filter {
@@ -468,8 +459,7 @@ impl DockerApp {
         let paused =
             self.state.containers.iter().filter(|c| c.state == dockerview_core::ContainerState::Paused).count();
         let stopped = total - running - paused;
-        let (cpu, mem) = self.totals();
-        let mem_limit = self.state.stats.values().filter_map(|h| h.latest()).map(|s| s.mem_limit).max().unwrap_or(0);
+        let t = self.state.totals();
 
         h_flex()
             .gap_3()
@@ -489,12 +479,27 @@ impl DockerApp {
                 p.amber,
                 p,
             ))
-            .child(stat_card(IconName::Cpu, "CPU total", format!("{cpu:.1}%"), "soma dos containers ativos", p.accent, p))
+            .child(stat_card(
+                IconName::Cpu,
+                "CPU do host",
+                format!("{:.1}%", t.cpu_host_percent),
+                if t.host_cores > 0 {
+                    format!("{:.2} / {} núcleos", t.cores_used, t.host_cores)
+                } else {
+                    "sem containers ativos".into()
+                },
+                p.accent,
+                p,
+            ))
             .child(stat_card(
                 IconName::MemoryStick,
-                "Memória total",
-                format_bytes(mem),
-                if mem_limit > 0 { format!("limite do host {}", format_bytes(mem_limit)) } else { "—".into() },
+                "Memória",
+                format_bytes(t.mem_usage),
+                if t.mem_limit > 0 {
+                    format!("{:.1}% de {}", t.mem_usage as f64 * 100.0 / t.mem_limit as f64, format_bytes(t.mem_limit))
+                } else {
+                    "—".into()
+                },
                 p.cyan,
                 p,
             ))
