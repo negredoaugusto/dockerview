@@ -242,7 +242,7 @@ impl AppState {
 
     /// Nome do container, ou o ID curto se não estiver na lista.
     pub fn name_of<'a>(&'a self, id: &'a str) -> &'a str {
-        self.container(id).map(|c| c.name.as_str()).unwrap_or(&id[..id.len().min(12)])
+        self.container(id).map(|c| c.name.as_str()).unwrap_or(crate::model::short_id_of(id))
     }
 
     /// Containers que passam no filtro e cuja busca casa com nome, imagem ou ID.

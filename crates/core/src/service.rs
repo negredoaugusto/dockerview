@@ -11,7 +11,7 @@ use futures_util::StreamExt;
 use tokio::task::JoinHandle;
 
 use crate::client::DockerClient;
-use crate::model::{Action, ContainerId, ContainerSummary, LogLine, StatsSample};
+use crate::model::{Action, ContainerId, ContainerSummary, LogLine, LogStream, StatsSample};
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -102,7 +102,16 @@ impl EventSink {
         }
         ok
     }
+
+    /// Eventos enviados que a UI ainda não consumiu.
+    fn backlog(&self) -> usize {
+        self.tx.len()
+    }
 }
+
+/// Acima disso, novas linhas de log são descartadas em vez de crescer a fila sem
+/// limite (ex.: janela minimizada que não drena o canal + container muito verboso).
+const MAX_PENDING_EVENTS: usize = 10_000;
 
 const MAX_BACKOFF: Duration = Duration::from_secs(10);
 
@@ -218,9 +227,21 @@ impl State {
                 let task_id = id.clone();
                 let handle = tokio::spawn(async move {
                     let mut stream = Box::pin(client.logs(&task_id, true, &tail));
+                    // Linhas descartadas porque a UI não estava consumindo a fila.
+                    let mut skipped: u64 = 0;
                     while let Some(item) = stream.next().await {
                         match item {
                             Ok(line) => {
+                                if ev.backlog() >= MAX_PENDING_EVENTS {
+                                    skipped += 1;
+                                    continue;
+                                }
+                                if skipped > 0 {
+                                    let text = format!("… {skipped} linhas descartadas (interface não acompanhou)");
+                                    let note = LogLine { stream: LogStream::Console, text };
+                                    ev.send(Event::LogLine { id: task_id.clone(), line: note });
+                                    skipped = 0;
+                                }
                                 if !ev.send(Event::LogLine { id: task_id.clone(), line }) {
                                     return;
                                 }
@@ -297,5 +318,5 @@ async fn refresh(client: &DockerClient, state: &State, events: &EventSink) {
 }
 
 fn short(id: &str) -> &str {
-    &id[..id.len().min(12)]
+    crate::model::short_id_of(id)
 }

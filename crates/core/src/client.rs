@@ -88,7 +88,7 @@ impl DockerClient {
                 | bollard::container::LogOutput::StdIn { message } => (LogStream::Console, message),
             };
             let text = String::from_utf8_lossy(&bytes).trim_end_matches(['\n', '\r']).to_string();
-            Ok(LogLine { stream, text })
+            Ok(LogLine { stream, text: truncate_line(text) })
         })
     }
 
@@ -125,6 +125,23 @@ impl DockerClient {
             }
         })
     }
+}
+
+/// Tamanho máximo de uma linha de log guardada. Um container pode emitir linhas
+/// gigantes; sem limite, 5000 linhas no buffer poderiam ocupar gigabytes.
+pub const MAX_LOG_LINE_BYTES: usize = 16 * 1024;
+
+fn truncate_line(mut text: String) -> String {
+    if text.len() > MAX_LOG_LINE_BYTES {
+        let mut end = MAX_LOG_LINE_BYTES;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let extra = text.len() - end;
+        text.truncate(end);
+        text.push_str(&format!(" … [+{extra} bytes truncados]"));
+    }
+    text
 }
 
 fn convert_summary(c: bollard::models::ContainerSummary) -> ContainerSummary {
@@ -175,5 +192,21 @@ fn convert_summary(c: bollard::models::ContainerSummary) -> ContainerSummary {
         status: c.status.unwrap_or_default(),
         created: c.created.unwrap_or_default(),
         ports,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_lines_are_truncated_on_char_boundary() {
+        let short = "ok".to_string();
+        assert_eq!(truncate_line(short.clone()), short);
+
+        let long = "é".repeat(MAX_LOG_LINE_BYTES); // 2 bytes cada
+        let out = truncate_line(long);
+        assert!(out.len() < MAX_LOG_LINE_BYTES + 64);
+        assert!(out.ends_with("bytes truncados]"));
     }
 }

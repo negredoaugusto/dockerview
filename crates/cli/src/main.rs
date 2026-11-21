@@ -2,8 +2,10 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use dockerview_core::{Action, Command, DockerClient, Event, LogStream, format_bytes, spawn_core};
+use dockerview_core::{Action, Command, DockerClient, Event, LogStream, format_bytes, short_id_of, spawn_core};
 use futures_util::StreamExt;
+use std::borrow::Cow;
+use std::io::IsTerminal;
 
 #[derive(Parser)]
 #[command(name = "dockerview-cli", about = "Ferramenta de teste do núcleo do dockerview")]
@@ -87,12 +89,16 @@ async fn main() -> Result<()> {
             println!("removido: {id}");
         }
         Cmd::Logs { id, follow, tail } => {
+            // No terminal, neutraliza sequências de escape vindas do container
+            // (ANSI/OSC podem reescrever a tela, forjar links, gravar no clipboard...).
+            // Redirecionado para arquivo/pipe, mantém os bytes originais.
+            let (out_tty, err_tty) = (std::io::stdout().is_terminal(), std::io::stderr().is_terminal());
             let mut stream = Box::pin(client.logs(&id, follow, &tail));
             while let Some(line) = stream.next().await {
                 let line = line?;
                 match line.stream {
-                    LogStream::Stderr => eprintln!("{}", line.text),
-                    _ => println!("{}", line.text),
+                    LogStream::Stderr => eprintln!("{}", sanitize_if(err_tty, &line.text)),
+                    _ => println!("{}", sanitize_if(out_tty, &line.text)),
                 }
             }
         }
@@ -164,7 +170,7 @@ async fn watch(stats: Option<String>) -> Result<()> {
                 }
                 Event::Stats { id, sample } => println!(
                     "[stats {}] cpu {:.2}% mem {}",
-                    &id[..id.len().min(12)],
+                    short_id_of(&id),
                     sample.cpu_percent,
                     format_bytes(sample.mem_usage)
                 ),
@@ -173,6 +179,18 @@ async fn watch(stats: Option<String>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Troca caracteres de controle (exceto tab) pela forma escapada, ex.: ESC → `\u{1b}`.
+fn sanitize_if(tty: bool, s: &str) -> Cow<'_, str> {
+    if !tty || !s.chars().any(|c| c.is_control() && c != '\t') {
+        return Cow::Borrowed(s);
+    }
+    Cow::Owned(
+        s.chars()
+            .map(|c| if c.is_control() && c != '\t' { c.escape_default().to_string() } else { c.to_string() })
+            .collect(),
+    )
 }
 
 fn truncate(s: &str, max: usize) -> String {

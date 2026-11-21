@@ -79,7 +79,16 @@ pub struct ContainerSummary {
 
 impl ContainerSummary {
     pub fn short_id(&self) -> &str {
-        &self.id[..self.id.len().min(12)]
+        short_id_of(&self.id)
+    }
+}
+
+/// Primeiros 12 caracteres de um ID. Corta em fronteira de caractere, então não
+/// entra em pânico com entrada não-ASCII (ex.: ID digitado na CLI).
+pub fn short_id_of(id: &str) -> &str {
+    match id.char_indices().nth(12) {
+        Some((end, _)) => &id[..end],
+        None => id,
     }
 }
 
@@ -167,6 +176,13 @@ pub fn format_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn short_id_handles_non_ascii() {
+        assert_eq!(short_id_of("0123456789abcdef"), "0123456789ab");
+        assert_eq!(short_id_of("abc"), "abc");
+        assert_eq!(short_id_of("ççççççççççççççç"), "çççççççççççç");
+    }
 
     #[test]
     fn bytes() {
